@@ -32,14 +32,21 @@ conversation_history = [
     """,
     }
 ]
+
+# conversation history required for query refiner funstion
 qr_message = [
     {
         "role": "system",
-        "content": "Form a clear, concise and on point question which should contain all the important context from the following information.",
+        "content": """
+        Form a clear, concise and on point question which should contain
+        all the important context from the following information. If the conversation history
+        is "Not yet available", then return the original query asked by user.
+        """,
     }
 ]
 
 
+# Uploading and indexing the file
 def upload_file(file):
     loader = PdfReader(file)
 
@@ -73,6 +80,7 @@ def upload_file(file):
     )
 
 
+# This function makes the user question more accurate and consice so that the vector db can retrieve correct documents
 def query_refiner(query):
 
     if len(conversation_history) > 1:
@@ -89,8 +97,6 @@ def query_refiner(query):
 
     qr_message.append({"role": "user", "content": prompt})
 
-    # prompt = prompt.format(query=query, history=conv_history)
-
     response = client.chat.completions.create(
         messages=qr_message,
         model="gpt-3.5-turbo-0125",
@@ -101,6 +107,7 @@ def query_refiner(query):
     return response.choices[0].message.content
 
 
+# Updating conversation history
 def update_history(role: str, content: str):
     if len(conversation_history) <= 8:
         conversation_history.append({"role": role, "content": content})
@@ -108,11 +115,8 @@ def update_history(role: str, content: str):
         conversation_history.pop(1)
 
 
+# Retrieve matching documents from vectordb
 def find_match(query):
-
-    # role = "user"
-    # content = query_refiner(query)
-    # update_history(role, content)
 
     collection = chroma_client.get_collection(
         name="text-embedding-ada-002",
@@ -124,13 +128,10 @@ def find_match(query):
     return docs["documents"][0]
 
 
+# Feeding the retrieve documents to llm to generate the required response
 def generate_response(query: str):
 
     retrieved_doc = find_match(query)
-
-    # conv_history = "\n".join(
-    #     f'{entry["role"]}:{entry["content"]}' for entry in conversation_history
-    # )
 
     prompt = f"""
     Question: ```{query}```,
@@ -139,12 +140,10 @@ def generate_response(query: str):
 
     conversation_history.append({"role": "user", "content": prompt})
 
-    # message.format(question=query, context=retrieved_doc, chat=conv_history)
-
     response = client.chat.completions.create(
         messages=conversation_history,
         model="gpt-3.5-turbo-0125",
-        temperature=0.7,
+        temperature=0.3,
     )
 
     update_history("assistant", response.choices[0].message.content)
@@ -152,17 +151,12 @@ def generate_response(query: str):
     return response.choices[0].message.content
 
 
-# file_path = "./2023_Annual_Report.pdf"
+# def main():
 
-# upload_file(file_path)
+#     while True:
+#         question = input("Ask a question: ")
 
-
-def main():
-
-    while True:
-        question = input("Ask a question: ")
-
-        print(generate_response(question))
+#         print(generate_response(question))
 
 
-main()
+# main()
